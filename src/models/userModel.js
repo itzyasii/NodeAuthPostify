@@ -31,7 +31,11 @@ const userSchema = mongoose.Schema(
       default: false,
       select: false,
     },
-    verificationToken: {
+    verificationCode: {
+      type: String,
+      select: false,
+    },
+    verificationCodeValidation: {
       type: Number,
       select: false,
     },

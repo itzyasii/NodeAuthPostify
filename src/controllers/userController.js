@@ -1,5 +1,7 @@
+const transport = require("../middlewares/sendMail");
 const User = require("../models/userModel");
 const bcryptjs = require("bcryptjs");
+const { createHmac } = require("crypto");
 
 exports.signUp = async (req, res) => {
   try {
@@ -19,7 +21,11 @@ exports.signUp = async (req, res) => {
       email,
     });
     let result = await newUser.save();
-    res.status(201).json({ message: "Registrations successful" });
+    result.password = undefined;
+
+    res
+      .status(201)
+      .json({ success: true, message: "Registrations successful", result });
   } catch (err) {
     res.status(500).json({ message: "Internal server error " + err.message });
   }
@@ -74,8 +80,8 @@ exports.SignOut = async (req, res) => {
 };
 
 exports.sendVerificationCode = async (req, res) => {
-  const { email } = req.body;
   try {
+    const { email } = req.body;
     const existingUser = await User.findOne({ email });
 
     if (!existingUser) {
@@ -85,7 +91,7 @@ exports.sendVerificationCode = async (req, res) => {
       });
     }
     if (existingUser.verified) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         message: "You are already verified",
       });
@@ -96,18 +102,24 @@ exports.sendVerificationCode = async (req, res) => {
       from: process.env.EMAIL_ADDRESS,
       to: existingUser.email,
       subject: "Verification Code",
-      html: `<h1>Your verification code is ${codeValue} </h1> `, 
-    })
+      html: `<h1>Your verification code is ${codeValue} </h1> `,
+    });
 
-    if(info.accepted[0] === existingUser.email) {
-      res.status(200).json({
-        success: true,
-        message: "Verification code sent successfully",
-      });
+    if (info.accepted[0] === existingUser.email) {
+      const hashedCode = createHmac("sha256", process.env.HMAC_VERFICATION_CODE)
+        .update(codeValue)
+        .digest("hex");
+      existingUser.verificationCode = hashedCode;
+      existingUser.verificationCodeValidation = Date.now();
+      await existingUser.save();
+      return res
+        .status(200)
+        .json({ success: true, message: "Verification code sent." });
     }
-
-    existingUser.verificationToken = parseInt(codeValue);
-    await existingUser.save(); 
-  
-  } catch (error) {}
+    res
+      .status(400)
+      .json({ success: false, message: "Faild to send verfication code." });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error: " + error.message });
+  }
 };
